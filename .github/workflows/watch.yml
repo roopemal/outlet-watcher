@@ -1,0 +1,48 @@
+name: Outlet watcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes (GitHub may delay runs a bit)
+  workflow_dispatch:
+    inputs:
+      product:
+        description: "Product link, number or words (empty = use the PRODUCT variable)"
+        required: false
+        default: ""
+      test:
+        description: "Test mode: always send what it finds"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: outlet-watcher
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the Outlet
+        env:
+          PRODUCT: ${{ inputs.product || vars.PRODUCT }}
+          ALLOWED_GRADES: ${{ vars.ALLOWED_GRADES }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test }}
+        run: python3 watcher.py
+
+      - name: Save what has been seen
+        if: always()
+        run: |
+          git config user.name "outlet-bot"
+          git config user.email "outlet-bot@users.noreply.github.com"
+          if [ -f state.json ]; then
+            git add state.json
+            git diff --cached --quiet || (git commit -m "Update seen items" && git push)
+          fi
